@@ -58,7 +58,7 @@ button {
   top: 0;
   right: 0;
   left: 0;
-  height: 22px;
+  height: var(--hud-reveal-height);
   pointer-events: none;
 }
 
@@ -68,10 +68,10 @@ button {
 
 .toolbar-reveal-zone span {
   position: absolute;
-  top: 4px;
+  top: var(--hud-handle-top);
   left: 50%;
-  width: 48px;
-  height: 4px;
+  width: var(--hud-handle-width);
+  height: var(--hud-handle-height);
   border-radius: 4px;
   background: rgb(35 48 64 / 0.42);
   opacity: 0;
@@ -83,14 +83,20 @@ button {
   opacity: 1;
 }
 
-.board-toolbar {
+.toolbar-positioner {
   position: fixed;
   z-index: 40;
-  top: 10px;
+  top: var(--hud-top);
   left: 50%;
+  width: var(--hud-width);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.board-toolbar {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) auto minmax(112px, 1fr);
-  width: min(920px, calc(100vw - 24px));
+  width: 100%;
   gap: 10px;
   align-items: center;
   min-height: 58px;
@@ -102,7 +108,8 @@ button {
     0 12px 30px rgb(32 40 51 / 0.13),
     0 1px 0 rgb(255 255 255 / 0.72) inset;
   backdrop-filter: blur(16px);
-  transform: translate(-50%, 0);
+  transform: scale(var(--hud-scale)) translateY(0);
+  transform-origin: top center;
   transition:
     transform 220ms ease,
     opacity 160ms ease;
@@ -112,7 +119,8 @@ button {
 .board-toolbar.is-hidden {
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, calc(-100% - 16px));
+  transform: scale(var(--hud-scale))
+    translateY(calc(-100% - 16px));
 }
 
 .board-toolbar.is-visible {
@@ -624,85 +632,77 @@ button {
   cursor: grabbing;
 }
 
-@media (max-width: 760px) {
-  .board-toolbar {
-    top: 8px;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    width: calc(100vw - 16px);
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-  }
-
-  .brand-block > div {
-    display: none;
-  }
-
-  .brand-mark {
-    width: 34px;
-    height: 34px;
-  }
-
-  .tool-strip {
-    justify-content: center;
-  }
-
-  .direction-control {
-    flex: 0 0 auto;
-  }
-
-  .tool-button {
-    flex: 0 0 auto;
-    min-height: 36px;
-    padding: 0 10px;
-  }
+.whiteboard-app.hud-medium .board-toolbar {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
 }
 
-@media (max-width: 620px) {
-  .board-toolbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .brand-block {
-    display: none;
-  }
-
-  .tool-strip {
-    justify-content: flex-start;
-  }
-
-  .tool-button span:last-child {
-    display: none;
-  }
-
-  .tool-button {
-    width: 38px;
-    padding: 0;
-  }
-
-  .tool-button > span:first-child {
-    min-width: auto;
-  }
+.whiteboard-app.hud-medium .brand-block > div {
+  display: none;
 }
 
-@media (max-width: 420px) {
-  .board-toolbar {
-    gap: 6px;
-    padding: 7px;
-  }
+.whiteboard-app.hud-medium .brand-mark {
+  width: 34px;
+  height: 34px;
+}
 
-  .tool-strip {
-    gap: 6px;
-  }
+.whiteboard-app.hud-medium .tool-strip {
+  justify-content: center;
+}
 
-  .copy-button:disabled,
-  .icon-button {
-    display: none;
-  }
+.whiteboard-app.hud-medium .direction-control {
+  flex: 0 0 auto;
+}
 
-  .zoom-readout {
-    min-width: 44px;
-  }
+.whiteboard-app.hud-medium .tool-button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.whiteboard-app.hud-compact .board-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.whiteboard-app.hud-compact .brand-block {
+  display: none;
+}
+
+.whiteboard-app.hud-compact .tool-strip {
+  justify-content: flex-start;
+}
+
+.whiteboard-app.hud-compact .tool-button span:last-child {
+  display: none;
+}
+
+.whiteboard-app.hud-compact .tool-button {
+  width: 38px;
+  padding: 0;
+}
+
+.whiteboard-app.hud-compact .tool-button > span:first-child {
+  min-width: auto;
+}
+
+.whiteboard-app.hud-tiny .board-toolbar {
+  gap: 6px;
+  padding: 7px;
+}
+
+.whiteboard-app.hud-tiny .tool-strip {
+  gap: 6px;
+}
+
+.whiteboard-app.hud-tiny .copy-button:disabled,
+.whiteboard-app.hud-tiny .icon-button {
+  display: none;
+}
+
+.whiteboard-app.hud-tiny .zoom-readout {
+  min-width: 44px;
 }
 
 @media (prefers-reduced-motion: reduce) {
