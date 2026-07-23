@@ -433,6 +433,17 @@ export default function Home() {
     [],
   );
 
+  const clearTextSelection = useCallback(() => {
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLTextAreaElement) {
+      const caretPosition = activeElement.selectionEnd;
+      activeElement.setSelectionRange(caretPosition, caretPosition);
+      activeElement.blur();
+    }
+
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
   const addNote = useCallback(() => {
     const center = getViewportCenter();
     const position = findOpenNotePosition(notes, {
@@ -732,7 +743,7 @@ export default function Home() {
       const world = screenToWorld(event.clientX, event.clientY);
       boardRef.current?.setPointerCapture(event.pointerId);
       event.preventDefault();
-      window.getSelection()?.removeAllRanges();
+      clearTextSelection();
       setSelected({ type: "note", id: note.id });
       setDrag({
         type: "move-note",
@@ -908,9 +919,10 @@ export default function Home() {
       <section
         ref={boardRef}
         className={`board-surface ${drag ? "is-dragging" : ""} ${
-          drag?.type === "pan" ? "is-panning" : ""
-        }`}
+          drag?.type === "move-note" ? "is-moving-note" : ""
+        } ${drag?.type === "pan" ? "is-panning" : ""}`}
         style={boardStyle}
+        onDragStart={(event) => event.preventDefault()}
         onPointerDown={handleBoardPointerDown}
         onPointerMove={handleBoardPointerMove}
         onPointerUp={handleBoardPointerUp}
@@ -974,6 +986,7 @@ export default function Home() {
               </div>
               <textarea
                 aria-label="Memo text"
+                draggable={false}
                 value={note.text}
                 onChange={(event) =>
                   updateNote(note.id, { text: event.currentTarget.value })

@@ -297,8 +297,15 @@ button {
 }
 
 .sticky-note.is-selected {
+  z-index: 3;
   outline: 2px solid #2f80ed;
   outline-offset: 4px;
+}
+
+.board-surface.is-moving-note .sticky-note:not(.is-selected),
+.board-surface.is-moving-note .sticky-note textarea {
+  pointer-events: none;
+  user-select: none;
 }
 
 .note-port {
