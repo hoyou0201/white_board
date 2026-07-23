@@ -41,13 +41,6 @@ type ViewState = {
   zoom: number;
 };
 
-type HudMetrics = {
-  densityClasses: string;
-  scale: number;
-  top: number;
-  width: number;
-};
-
 type SelectedItem =
   | { type: "note"; id: string }
   | { type: "arrow"; id: string }
@@ -99,19 +92,12 @@ type StoredBoard = {
 };
 
 const STORAGE_KEY = "codex.memo-whiteboard.v1";
-const HUD_DPR_STORAGE_KEY = "codex.memo-whiteboard.hud-dpr";
 const MIN_ZOOM = 0.24;
 const MAX_ZOOM = 2.2;
 const MIN_NOTE_WIDTH = 170;
 const MIN_NOTE_HEIGHT = 130;
 const CONNECT_SNAP_PX = 28;
 const TOOLBAR_HIDE_DELAY_MS = 3000;
-const DEFAULT_HUD_METRICS: HudMetrics = {
-  densityClasses: "",
-  scale: 1,
-  top: 10,
-  width: 920,
-};
 const DEFAULT_ARROW_IDS = new Set(["arrow-1", "arrow-2"]);
 const NOTE_SPAWN_OFFSETS: Point[] = [
   { x: 0, y: 0 },
@@ -291,7 +277,6 @@ function shouldIgnoreBoardShortcut(target: EventTarget | null) {
 
 export default function Home() {
   const boardRef = useRef<HTMLDivElement>(null);
-  const initialDevicePixelRatioRef = useRef<number | null>(null);
   const toolbarHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [notes, setNotes] = useState<Note[]>(initialNotes);
   const [arrows, setArrows] = useState<ArrowItem[]>(initialArrows);
@@ -302,9 +287,6 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false);
   const [toolbarVisible, setToolbarVisible] = useState(true);
   const [canAutoHideToolbar, setCanAutoHideToolbar] = useState(false);
-  const [hudMetrics, setHudMetrics] = useState<HudMetrics>(
-    DEFAULT_HUD_METRICS,
-  );
 
   const clearToolbarHideTimer = useCallback(() => {
     if (toolbarHideTimerRef.current) {
@@ -470,101 +452,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const currentDevicePixelRatio = window.devicePixelRatio || 1;
-    const storedDevicePixelRatio = Number(
-      localStorage.getItem(HUD_DPR_STORAGE_KEY),
-    );
-    const hasStoredDevicePixelRatio =
-      Number.isFinite(storedDevicePixelRatio) &&
-      storedDevicePixelRatio >= 0.5 &&
-      storedDevicePixelRatio <= 8;
-    initialDevicePixelRatioRef.current = hasStoredDevicePixelRatio
-      ? storedDevicePixelRatio
-      : currentDevicePixelRatio;
-
-    if (!hasStoredDevicePixelRatio) {
-      localStorage.setItem(
-        HUD_DPR_STORAGE_KEY,
-        String(currentDevicePixelRatio),
-      );
-    }
-
-    let animationFrame: number | null = null;
-
-    const updateHudMetrics = () => {
-      const initialRatio = initialDevicePixelRatioRef.current ?? 1;
-      const currentRatio = window.devicePixelRatio || initialRatio;
-      const scale = clamp(initialRatio / currentRatio, 0.2, 4);
-      const effectiveViewportWidth = window.innerWidth / scale;
-      const isMedium = effectiveViewportWidth <= 760;
-      const isCompact = effectiveViewportWidth <= 620;
-      const isTiny = effectiveViewportWidth <= 420;
-      const densityClasses = [
-        isMedium ? "hud-medium" : "",
-        isCompact ? "hud-compact" : "",
-        isTiny ? "hud-tiny" : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-      const margin = isMedium ? 16 : 24;
-      const width = Math.min(
-        920,
-        Math.max(280, (window.innerWidth - margin) / scale),
-      );
-      const top = (isMedium ? 8 : 10) * scale;
-
-      setHudMetrics((current) => {
-        if (
-          current.densityClasses === densityClasses &&
-          Math.abs(current.scale - scale) < 0.001 &&
-          Math.abs(current.top - top) < 0.1 &&
-          Math.abs(current.width - width) < 0.1
-        ) {
-          return current;
-        }
-
-        return { densityClasses, scale, top, width };
-      });
-    };
-
-    const requestHudMetricsUpdate = () => {
-      if (animationFrame !== null) {
-        cancelAnimationFrame(animationFrame);
-      }
-
-      animationFrame = requestAnimationFrame(updateHudMetrics);
-    };
-
-    const handleBrowserZoomReset = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "0") {
-        window.setTimeout(() => {
-          const resetRatio = window.devicePixelRatio || 1;
-          initialDevicePixelRatioRef.current = resetRatio;
-          localStorage.setItem(HUD_DPR_STORAGE_KEY, String(resetRatio));
-          requestHudMetricsUpdate();
-        }, 160);
-      }
-    };
-
-    updateHudMetrics();
-    window.addEventListener("resize", requestHudMetricsUpdate);
-    window.addEventListener("keydown", handleBrowserZoomReset);
-    window.visualViewport?.addEventListener("resize", requestHudMetricsUpdate);
-
-    return () => {
-      if (animationFrame !== null) {
-        cancelAnimationFrame(animationFrame);
-      }
-      window.removeEventListener("resize", requestHudMetricsUpdate);
-      window.removeEventListener("keydown", handleBrowserZoomReset);
-      window.visualViewport?.removeEventListener(
-        "resize",
-        requestHudMetricsUpdate,
-      );
-    };
-  }, []);
-
-  useEffect(() => {
     if (canAutoHideToolbar) {
       scheduleToolbarHide();
     } else {
@@ -577,6 +464,24 @@ export default function Home() {
     clearToolbarHideTimer,
     scheduleToolbarHide,
   ]);
+
+  useEffect(() => {
+    const blockBrowserZoom = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("wheel", blockBrowserZoom, {
+      capture: true,
+      passive: false,
+    });
+
+    return () =>
+      window.removeEventListener("wheel", blockBrowserZoom, {
+        capture: true,
+      });
+  }, []);
 
   useEffect(() => {
     if (!loaded) {
@@ -1042,15 +947,6 @@ export default function Home() {
     "--grid-x": `${view.x}px`,
     "--grid-y": `${view.y}px`,
   } as CSSProperties;
-  const hudStyle = {
-    "--hud-handle-height": `${4 * hudMetrics.scale}px`,
-    "--hud-handle-top": `${4 * hudMetrics.scale}px`,
-    "--hud-handle-width": `${48 * hudMetrics.scale}px`,
-    "--hud-reveal-height": `${22 * hudMetrics.scale}px`,
-    "--hud-scale": hudMetrics.scale,
-    "--hud-top": `${hudMetrics.top}px`,
-    "--hud-width": `${hudMetrics.width}px`,
-  } as CSSProperties;
 
   const visibleArrows = (draftArrow ? [...arrows, draftArrow] : arrows).map(
     (arrow) => resolveArrow(arrow, notes),
@@ -1058,10 +954,7 @@ export default function Home() {
   const activeSelection = selectedNote ?? selectedArrow;
 
   return (
-    <main
-      className={`whiteboard-app ${hudMetrics.densityClasses}`}
-      style={hudStyle}
-    >
+    <main className="whiteboard-app">
       <div
         aria-hidden="true"
         className={`toolbar-reveal-zone ${

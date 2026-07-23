@@ -54,11 +54,11 @@ button {
 
 .toolbar-reveal-zone {
   position: fixed;
-  z-index: 35;
+  z-index: 45;
   top: 0;
   right: 0;
   left: 0;
-  height: var(--hud-reveal-height);
+  height: 26px;
   pointer-events: none;
 }
 
@@ -68,10 +68,10 @@ button {
 
 .toolbar-reveal-zone span {
   position: absolute;
-  top: var(--hud-handle-top);
+  top: 6px;
   left: 50%;
-  width: var(--hud-handle-width);
-  height: var(--hud-handle-height);
+  width: 48px;
+  height: 4px;
   border-radius: 4px;
   background: rgb(35 48 64 / 0.42);
   opacity: 0;
@@ -86,9 +86,9 @@ button {
 .toolbar-positioner {
   position: fixed;
   z-index: 40;
-  top: var(--hud-top);
+  top: 10px;
   left: 50%;
-  width: var(--hud-width);
+  width: min(920px, calc(100vw - 24px));
   pointer-events: none;
   transform: translateX(-50%);
 }
@@ -108,8 +108,7 @@ button {
     0 12px 30px rgb(32 40 51 / 0.13),
     0 1px 0 rgb(255 255 255 / 0.72) inset;
   backdrop-filter: blur(16px);
-  transform: scale(var(--hud-scale)) translateY(0);
-  transform-origin: top center;
+  transform: translateY(0);
   transition:
     transform 220ms ease,
     opacity 160ms ease;
@@ -119,8 +118,7 @@ button {
 .board-toolbar.is-hidden {
   opacity: 0;
   pointer-events: none;
-  transform: scale(var(--hud-scale))
-    translateY(calc(-100% - 16px));
+  transform: translateY(calc(-100% - 20px));
 }
 
 .board-toolbar.is-visible {
@@ -632,77 +630,88 @@ button {
   cursor: grabbing;
 }
 
-.whiteboard-app.hud-medium .board-toolbar {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
+@media (max-width: 760px) {
+  .toolbar-positioner {
+    top: 8px;
+    width: calc(100vw - 16px);
+  }
+
+  .board-toolbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .brand-block > div {
+    display: none;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .tool-strip {
+    justify-content: center;
+  }
+
+  .direction-control {
+    flex: 0 0 auto;
+  }
+
+  .tool-button {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0 10px;
+  }
 }
 
-.whiteboard-app.hud-medium .brand-block > div {
-  display: none;
+@media (max-width: 620px) {
+  .board-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .brand-block {
+    display: none;
+  }
+
+  .tool-strip {
+    justify-content: flex-start;
+  }
+
+  .tool-button span:last-child {
+    display: none;
+  }
+
+  .tool-button {
+    width: 38px;
+    padding: 0;
+  }
+
+  .tool-button > span:first-child {
+    min-width: auto;
+  }
 }
 
-.whiteboard-app.hud-medium .brand-mark {
-  width: 34px;
-  height: 34px;
-}
+@media (max-width: 420px) {
+  .board-toolbar {
+    gap: 6px;
+    padding: 7px;
+  }
 
-.whiteboard-app.hud-medium .tool-strip {
-  justify-content: center;
-}
+  .tool-strip {
+    gap: 6px;
+  }
 
-.whiteboard-app.hud-medium .direction-control {
-  flex: 0 0 auto;
-}
+  .copy-button:disabled,
+  .icon-button {
+    display: none;
+  }
 
-.whiteboard-app.hud-medium .tool-button {
-  flex: 0 0 auto;
-  min-height: 36px;
-  padding: 0 10px;
-}
-
-.whiteboard-app.hud-compact .board-toolbar {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.whiteboard-app.hud-compact .brand-block {
-  display: none;
-}
-
-.whiteboard-app.hud-compact .tool-strip {
-  justify-content: flex-start;
-}
-
-.whiteboard-app.hud-compact .tool-button span:last-child {
-  display: none;
-}
-
-.whiteboard-app.hud-compact .tool-button {
-  width: 38px;
-  padding: 0;
-}
-
-.whiteboard-app.hud-compact .tool-button > span:first-child {
-  min-width: auto;
-}
-
-.whiteboard-app.hud-tiny .board-toolbar {
-  gap: 6px;
-  padding: 7px;
-}
-
-.whiteboard-app.hud-tiny .tool-strip {
-  gap: 6px;
-}
-
-.whiteboard-app.hud-tiny .copy-button:disabled,
-.whiteboard-app.hud-tiny .icon-button {
-  display: none;
-}
-
-.whiteboard-app.hud-tiny .zoom-readout {
-  min-width: 44px;
+  .zoom-readout {
+    min-width: 44px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
