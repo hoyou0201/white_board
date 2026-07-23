@@ -97,6 +97,7 @@ const MAX_ZOOM = 2.2;
 const MIN_NOTE_WIDTH = 170;
 const MIN_NOTE_HEIGHT = 130;
 const CONNECT_SNAP_PX = 28;
+const TOOLBAR_HIDE_DELAY_MS = 3000;
 const DEFAULT_ARROW_IDS = new Set(["arrow-1", "arrow-2"]);
 const NOTE_SPAWN_OFFSETS: Point[] = [
   { x: 0, y: 0 },
@@ -276,6 +277,7 @@ function shouldIgnoreBoardShortcut(target: EventTarget | null) {
 
 export default function Home() {
   const boardRef = useRef<HTMLDivElement>(null);
+  const toolbarHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [notes, setNotes] = useState<Note[]>(initialNotes);
   const [arrows, setArrows] = useState<ArrowItem[]>(initialArrows);
   const [view, setView] = useState<ViewState>(initialView);
@@ -283,6 +285,52 @@ export default function Home() {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [draftArrow, setDraftArrow] = useState<ArrowItem | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [toolbarVisible, setToolbarVisible] = useState(true);
+  const [canAutoHideToolbar, setCanAutoHideToolbar] = useState(false);
+
+  const clearToolbarHideTimer = useCallback(() => {
+    if (toolbarHideTimerRef.current) {
+      clearTimeout(toolbarHideTimerRef.current);
+      toolbarHideTimerRef.current = null;
+    }
+  }, []);
+
+  const showToolbar = useCallback(() => {
+    clearToolbarHideTimer();
+    setToolbarVisible(true);
+  }, [clearToolbarHideTimer]);
+
+  const revealToolbarTemporarily = useCallback(() => {
+    clearToolbarHideTimer();
+    setToolbarVisible(true);
+
+    if (canAutoHideToolbar) {
+      toolbarHideTimerRef.current = setTimeout(
+        () => setToolbarVisible(false),
+        TOOLBAR_HIDE_DELAY_MS,
+      );
+    }
+  }, [canAutoHideToolbar, clearToolbarHideTimer]);
+
+  const scheduleToolbarHide = useCallback(() => {
+    clearToolbarHideTimer();
+
+    if (canAutoHideToolbar) {
+      toolbarHideTimerRef.current = setTimeout(
+        () => setToolbarVisible(false),
+        TOOLBAR_HIDE_DELAY_MS,
+      );
+    }
+  }, [canAutoHideToolbar, clearToolbarHideTimer]);
+
+  const hideToolbarForBoardInteraction = useCallback(() => {
+    if (!canAutoHideToolbar) {
+      return;
+    }
+
+    clearToolbarHideTimer();
+    setToolbarVisible(false);
+  }, [canAutoHideToolbar, clearToolbarHideTimer]);
 
   const selectedNote = useMemo(() => {
     if (selected?.type !== "note") {
@@ -385,6 +433,37 @@ export default function Home() {
       setLoaded(true);
     }
   }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const syncAutoHideSupport = () => {
+      setCanAutoHideToolbar(mediaQuery.matches);
+
+      if (!mediaQuery.matches) {
+        setToolbarVisible(true);
+      }
+    };
+
+    syncAutoHideSupport();
+    mediaQuery.addEventListener("change", syncAutoHideSupport);
+
+    return () =>
+      mediaQuery.removeEventListener("change", syncAutoHideSupport);
+  }, []);
+
+  useEffect(() => {
+    if (canAutoHideToolbar) {
+      scheduleToolbarHide();
+    } else {
+      clearToolbarHideTimer();
+    }
+
+    return clearToolbarHideTimer;
+  }, [
+    canAutoHideToolbar,
+    clearToolbarHideTimer,
+    scheduleToolbarHide,
+  ]);
 
   useEffect(() => {
     if (!loaded) {
@@ -560,6 +639,7 @@ export default function Home() {
     }
 
     event.currentTarget.setPointerCapture(event.pointerId);
+    hideToolbarForBoardInteraction();
     setSelected(null);
 
     setDrag({
@@ -672,6 +752,7 @@ export default function Home() {
         };
         setArrows((current) => [...current, nextArrow]);
         setSelected({ type: "arrow", id: nextArrow.id });
+        revealToolbarTemporarily();
       }
     }
 
@@ -706,6 +787,7 @@ export default function Home() {
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
+    hideToolbarForBoardInteraction();
     const board = boardRef.current;
     if (!board) {
       return;
@@ -743,6 +825,7 @@ export default function Home() {
       const world = screenToWorld(event.clientX, event.clientY);
       boardRef.current?.setPointerCapture(event.pointerId);
       event.preventDefault();
+      hideToolbarForBoardInteraction();
       clearTextSelection();
       setSelected({ type: "note", id: note.id });
       setDrag({
@@ -763,6 +846,7 @@ export default function Home() {
 
       const world = screenToWorld(event.clientX, event.clientY);
       boardRef.current?.setPointerCapture(event.pointerId);
+      hideToolbarForBoardInteraction();
       setSelected({ type: "note", id: note.id });
       setDrag({
         type: "resize-note",
@@ -784,6 +868,7 @@ export default function Home() {
       const point = getNoteAnchorPoint(note, side);
       boardRef.current?.setPointerCapture(event.pointerId);
       event.preventDefault();
+      hideToolbarForBoardInteraction();
       setSelected(null);
       setDraftArrow({
         id: "draft",
@@ -812,6 +897,7 @@ export default function Home() {
 
       event.preventDefault();
       setSelected({ type: "arrow", id: arrow.id });
+      revealToolbarTemporarily();
       event.stopPropagation();
     };
 
@@ -823,6 +909,7 @@ export default function Home() {
       }
 
       boardRef.current?.setPointerCapture(event.pointerId);
+      hideToolbarForBoardInteraction();
       setSelected({ type: "arrow", id: arrow.id });
       setDrag({
         type: "resize-arrow",
@@ -850,7 +937,24 @@ export default function Home() {
 
   return (
     <main className="whiteboard-app">
-      <header className="board-toolbar">
+      <div
+        aria-hidden="true"
+        className={`toolbar-reveal-zone ${
+          toolbarVisible ? "" : "is-active"
+        }`}
+        onPointerDown={showToolbar}
+        onPointerEnter={showToolbar}
+      >
+        <span />
+      </div>
+      <header
+        className={`board-toolbar ${
+          toolbarVisible ? "is-visible" : "is-hidden"
+        }`}
+        onFocusCapture={showToolbar}
+        onPointerEnter={showToolbar}
+        onPointerLeave={scheduleToolbarHide}
+      >
         <div className="brand-block">
           <span className="brand-mark" aria-hidden="true">
             M
@@ -867,7 +971,7 @@ export default function Home() {
             <span>Note</span>
           </button>
           <button
-            className="tool-button"
+            className="tool-button copy-button"
             type="button"
             onClick={duplicateNote}
             disabled={!selectedNote}
@@ -966,6 +1070,7 @@ export default function Home() {
               onPointerDown={(event) => {
                 event.stopPropagation();
                 setSelected({ type: "note", id: note.id });
+                revealToolbarTemporarily();
               }}
             >
               {noteSides.map((side) => (
@@ -991,7 +1096,10 @@ export default function Home() {
                 onChange={(event) =>
                   updateNote(note.id, { text: event.currentTarget.value })
                 }
-                onFocus={() => setSelected({ type: "note", id: note.id })}
+                onFocus={() => {
+                  setSelected({ type: "note", id: note.id });
+                  revealToolbarTemporarily();
+                }}
                 onDragStart={(event) => event.preventDefault()}
                 onPointerDown={(event) => event.stopPropagation()}
                 placeholder="메모"
