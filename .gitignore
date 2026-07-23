@@ -17,10 +17,20 @@
 /.next/
 /.vinext/
 /out/
+/dist/
 
 # misc
 .DS_Store
 *.pem
+*.tgz
+/.agents/
+/.codex/
+/.openai/
+/app/_sites-preview/
+/build/
+/outputs/
+/work/
+/.wrangler/
 
 # debug
 npm-debug.log*
@@ -36,7 +46,3 @@ yarn-error.log*
 
 # typescript
 next-env.d.ts
-/dist/
-/.wrangler/
-/outputs/
-/work/
