@@ -943,7 +943,7 @@ export default function Home() {
     "--board-x": `${view.x}px`,
     "--board-y": `${view.y}px`,
     "--board-zoom": view.zoom,
-    "--grid-size": `${32 * view.zoom}px`,
+    "--grid-size": "32px",
     "--grid-x": `${view.x}px`,
     "--grid-y": `${view.y}px`,
   } as CSSProperties;

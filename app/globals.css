@@ -87,10 +87,11 @@ button {
   position: fixed;
   z-index: 40;
   top: 10px;
-  left: 50%;
+  right: 0;
+  left: 0;
   width: min(920px, calc(100vw - 24px));
+  margin-inline: auto;
   pointer-events: none;
-  transform: translateX(-50%);
 }
 
 .board-toolbar {
