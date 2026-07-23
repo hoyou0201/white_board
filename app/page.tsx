@@ -15,6 +15,14 @@ type Note = {
   color: NoteColor;
 };
 
+type NoteSide = "top" | "right" | "bottom" | "left";
+type ArrowDirection = "none" | "forward" | "backward" | "both";
+
+type ArrowAnchor = {
+  noteId: string;
+  side: NoteSide;
+};
+
 type ArrowItem = {
   id: string;
   x1: number;
@@ -22,6 +30,9 @@ type ArrowItem = {
   x2: number;
   y2: number;
   color: string;
+  direction: ArrowDirection;
+  startAnchor: ArrowAnchor | null;
+  endAnchor: ArrowAnchor | null;
 };
 
 type ViewState = {
@@ -93,6 +104,20 @@ const MIN_ZOOM = 0.24;
 const MAX_ZOOM = 2.2;
 const MIN_NOTE_WIDTH = 170;
 const MIN_NOTE_HEIGHT = 130;
+const CONNECT_SNAP_PX = 28;
+
+const arrowDirections: Array<{
+  id: ArrowDirection;
+  label: string;
+  symbol: string;
+}> = [
+  { id: "none", label: "No direction", symbol: "—" },
+  { id: "forward", label: "Forward", symbol: "→" },
+  { id: "backward", label: "Backward", symbol: "←" },
+  { id: "both", label: "Both directions", symbol: "↔" },
+];
+
+const noteSides: NoteSide[] = ["top", "right", "bottom", "left"];
 
 const noteColors: Array<{ id: NoteColor; label: string }> = [
   { id: "sun", label: "Yellow" },
@@ -135,19 +160,25 @@ const initialNotes: Note[] = [
 const initialArrows: ArrowItem[] = [
   {
     id: "arrow-1",
-    x1: 102,
-    y1: -20,
-    x2: 206,
-    y2: 20,
+    x1: 100,
+    y1: -28,
+    x2: 210,
+    y2: 46,
     color: "#3f4a5a",
+    direction: "forward",
+    startAnchor: { noteId: "note-1", side: "right" },
+    endAnchor: { noteId: "note-2", side: "left" },
   },
   {
     id: "arrow-2",
-    x1: 248,
-    y1: 132,
-    x2: 186,
+    x1: 334,
+    y1: 128,
+    x2: 177,
     y2: 226,
     color: "#3f4a5a",
+    direction: "both",
+    startAnchor: { noteId: "note-2", side: "bottom" },
+    endAnchor: { noteId: "note-3", side: "top" },
   },
 ];
 
@@ -163,6 +194,69 @@ function createId(prefix: string) {
   }
 
   return `${prefix}-${Date.now()}-${Math.round(Math.random() * 100000)}`;
+}
+
+function getNoteAnchorPoint(note: Note, side: NoteSide): Point {
+  if (side === "top") {
+    return { x: note.x + note.width / 2, y: note.y };
+  }
+
+  if (side === "right") {
+    return { x: note.x + note.width, y: note.y + note.height / 2 };
+  }
+
+  if (side === "bottom") {
+    return { x: note.x + note.width / 2, y: note.y + note.height };
+  }
+
+  return { x: note.x, y: note.y + note.height / 2 };
+}
+
+function resolveAnchorPoint(
+  anchor: ArrowAnchor | null,
+  notes: Note[],
+  fallback: Point,
+): Point {
+  if (!anchor) {
+    return fallback;
+  }
+
+  const note = notes.find((item) => item.id === anchor.noteId);
+  return note ? getNoteAnchorPoint(note, anchor.side) : fallback;
+}
+
+function resolveArrow(arrow: ArrowItem, notes: Note[]): ArrowItem {
+  const start = resolveAnchorPoint(
+    arrow.startAnchor,
+    notes,
+    { x: arrow.x1, y: arrow.y1 },
+  );
+  const end = resolveAnchorPoint(
+    arrow.endAnchor,
+    notes,
+    { x: arrow.x2, y: arrow.y2 },
+  );
+
+  return {
+    ...arrow,
+    x1: start.x,
+    y1: start.y,
+    x2: end.x,
+    y2: end.y,
+  };
+}
+
+function normalizeArrow(value: ArrowItem): ArrowItem {
+  const direction = arrowDirections.some((item) => item.id === value.direction)
+    ? value.direction
+    : "forward";
+
+  return {
+    ...value,
+    direction,
+    startAnchor: value.startAnchor ?? null,
+    endAnchor: value.endAnchor ?? null,
+  };
 }
 
 function isBoardData(value: unknown): value is StoredBoard {
@@ -233,6 +327,40 @@ export default function Home() {
     return screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
   }, [screenToWorld]);
 
+  const findNearestAnchor = useCallback(
+    (point: Point): { anchor: ArrowAnchor; point: Point } | null => {
+      const threshold = CONNECT_SNAP_PX / view.zoom;
+      let nearest: { anchor: ArrowAnchor; point: Point; distance: number } | null =
+        null;
+
+      for (const note of notes) {
+        for (const side of noteSides) {
+          const anchorPoint = getNoteAnchorPoint(note, side);
+          const distance = Math.hypot(
+            anchorPoint.x - point.x,
+            anchorPoint.y - point.y,
+          );
+
+          if (
+            distance <= threshold &&
+            (!nearest || distance < nearest.distance)
+          ) {
+            nearest = {
+              anchor: { noteId: note.id, side },
+              point: anchorPoint,
+              distance,
+            };
+          }
+        }
+      }
+
+      return nearest
+        ? { anchor: nearest.anchor, point: nearest.point }
+        : null;
+    },
+    [notes, view.zoom],
+  );
+
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -240,7 +368,7 @@ export default function Home() {
         const parsed: unknown = JSON.parse(stored);
         if (isBoardData(parsed)) {
           setNotes(parsed.notes);
-          setArrows(parsed.arrows);
+          setArrows(parsed.arrows.map(normalizeArrow));
           setView(parsed.view ?? initialView);
         }
       }
@@ -288,6 +416,17 @@ export default function Home() {
     );
   }, []);
 
+  const updateArrow = useCallback(
+    (id: string, patch: Partial<ArrowItem>) => {
+      setArrows((current) =>
+        current.map((arrow) =>
+          arrow.id === id ? { ...arrow, ...patch } : arrow,
+        ),
+      );
+    },
+    [],
+  );
+
   const addNote = useCallback(() => {
     const center = getViewportCenter();
     const nextNote: Note = {
@@ -328,6 +467,13 @@ export default function Home() {
 
     if (selected.type === "note") {
       setNotes((current) => current.filter((note) => note.id !== selected.id));
+      setArrows((current) =>
+        current.filter(
+          (arrow) =>
+            arrow.startAnchor?.noteId !== selected.id &&
+            arrow.endAnchor?.noteId !== selected.id,
+        ),
+      );
     }
 
     if (selected.type === "arrow") {
@@ -345,6 +491,7 @@ export default function Home() {
       return;
     }
 
+    const resolvedArrows = arrows.map((arrow) => resolveArrow(arrow, notes));
     const boxes = [
       ...notes.map((note) => ({
         left: note.x,
@@ -352,7 +499,7 @@ export default function Home() {
         right: note.x + note.width,
         bottom: note.y + note.height,
       })),
-      ...arrows.map((arrow) => ({
+      ...resolvedArrows.map((arrow) => ({
         left: Math.min(arrow.x1, arrow.x2),
         top: Math.min(arrow.y1, arrow.y2),
         right: Math.max(arrow.x1, arrow.x2),
@@ -404,6 +551,9 @@ export default function Home() {
         x2: world.x,
         y2: world.y,
         color: "#3f4a5a",
+        direction: "forward",
+        startAnchor: null,
+        endAnchor: null,
       });
       setDrag({
         type: "draw-arrow",
@@ -462,12 +612,14 @@ export default function Home() {
     }
 
     if (drag.type === "draw-arrow") {
+      const snapped = findNearestAnchor(world);
       setDraftArrow((current) =>
         current
           ? {
               ...current,
-              x2: world.x,
-              y2: world.y,
+              x2: snapped?.point.x ?? world.x,
+              y2: snapped?.point.y ?? world.y,
+              endAnchor: snapped?.anchor ?? null,
             }
           : current,
       );
@@ -486,6 +638,8 @@ export default function Home() {
                 y1: drag.startArrow.y1 + dy,
                 x2: drag.startArrow.x2 + dx,
                 y2: drag.startArrow.y2 + dy,
+                startAnchor: null,
+                endAnchor: null,
               }
             : arrow,
         ),
@@ -494,14 +648,23 @@ export default function Home() {
     }
 
     if (drag.type === "resize-arrow") {
+      const snapped = findNearestAnchor(world);
       setArrows((current) =>
         current.map((arrow) =>
           arrow.id === drag.id
             ? {
                 ...arrow,
                 ...(drag.handle === "start"
-                  ? { x1: world.x, y1: world.y }
-                  : { x2: world.x, y2: world.y }),
+                  ? {
+                      x1: snapped?.point.x ?? world.x,
+                      y1: snapped?.point.y ?? world.y,
+                      startAnchor: snapped?.anchor ?? null,
+                    }
+                  : {
+                      x2: snapped?.point.x ?? world.x,
+                      y2: snapped?.point.y ?? world.y,
+                      endAnchor: snapped?.anchor ?? null,
+                    }),
               }
             : arrow,
         ),
@@ -521,7 +684,10 @@ export default function Home() {
       );
 
       if (length > 28) {
-        const nextArrow = { ...draftArrow, id: createId("arrow") };
+        const nextArrow = {
+          ...draftArrow,
+          id: createId("arrow"),
+        };
         setArrows((current) => [...current, nextArrow]);
         setSelected({ type: "arrow", id: nextArrow.id });
       }
@@ -595,6 +761,36 @@ export default function Home() {
       event.stopPropagation();
     };
 
+  const beginArrowFromPort =
+    (note: Note, side: NoteSide) =>
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const point = getNoteAnchorPoint(note, side);
+      boardRef.current?.setPointerCapture(event.pointerId);
+      setTool("arrow");
+      setSelected(null);
+      setDraftArrow({
+        id: "draft",
+        x1: point.x,
+        y1: point.y,
+        x2: point.x,
+        y2: point.y,
+        color: "#3f4a5a",
+        direction: "forward",
+        startAnchor: { noteId: note.id, side },
+        endAnchor: null,
+      });
+      setDrag({
+        type: "draw-arrow",
+        pointerId: event.pointerId,
+        startWorld: point,
+      });
+      event.stopPropagation();
+    };
+
   const beginArrowMove =
     (arrow: ArrowItem) => (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (event.button !== 0) {
@@ -643,7 +839,9 @@ export default function Home() {
     "--grid-y": `${view.y}px`,
   } as CSSProperties;
 
-  const visibleArrows = draftArrow ? [...arrows, draftArrow] : arrows;
+  const visibleArrows = (draftArrow ? [...arrows, draftArrow] : arrows).map(
+    (arrow) => resolveArrow(arrow, notes),
+  );
   const activeSelection = selectedNote ?? selectedArrow;
 
   return (
@@ -698,6 +896,28 @@ export default function Home() {
             <span aria-hidden="true">×</span>
             <span>Delete</span>
           </button>
+          {selectedArrow ? (
+            <div className="direction-control" aria-label="Arrow direction">
+              {arrowDirections.map((direction) => (
+                <button
+                  aria-label={direction.label}
+                  className={
+                    selectedArrow.direction === direction.id ? "is-active" : ""
+                  }
+                  key={direction.id}
+                  onClick={() =>
+                    updateArrow(selectedArrow.id, {
+                      direction: direction.id,
+                    })
+                  }
+                  title={direction.label}
+                  type="button"
+                >
+                  {direction.symbol}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="view-strip" aria-label="View controls">
@@ -740,6 +960,11 @@ export default function Home() {
                 selected?.type === "note" && selected.id === note.id
                   ? "is-selected"
                   : ""
+              } ${
+                tool === "arrow" ||
+                (selected?.type === "note" && selected.id === note.id)
+                  ? "show-connectors"
+                  : ""
               }`}
               data-board-item="note"
               key={note.id}
@@ -754,6 +979,17 @@ export default function Home() {
                 setSelected({ type: "note", id: note.id });
               }}
             >
+              {noteSides.map((side) => (
+                <button
+                  aria-label={`Connect arrow to ${side} side`}
+                  className={`note-port port-${side}`}
+                  data-board-item="connector"
+                  key={side}
+                  onPointerDown={beginArrowFromPort(note, side)}
+                  title={`Connect from ${side}`}
+                  type="button"
+                />
+              ))}
               <div className="note-grip" onPointerDown={beginNoteMove(note)}>
                 <span aria-hidden="true" />
                 <span aria-hidden="true" />
@@ -816,21 +1052,28 @@ function ArrowElement({
 }) {
   const dx = arrow.x2 - arrow.x1;
   const dy = arrow.y2 - arrow.y1;
-  const length = Math.max(Math.hypot(dx, dy), 1);
-  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const roundGeometry = (value: number) => Math.round(value * 1000) / 1000;
+  const length = roundGeometry(Math.max(Math.hypot(dx, dy), 1));
+  const angle = roundGeometry((Math.atan2(dy, dx) * 180) / Math.PI);
+  const hasStartHead =
+    arrow.direction === "backward" || arrow.direction === "both";
+  const hasEndHead =
+    arrow.direction === "forward" || arrow.direction === "both";
 
   return (
     <div className={`arrow-layer ${isDraft ? "is-draft" : ""}`}>
       <button
         aria-label="Move arrow"
-        className={`arrow-body ${isSelected ? "is-selected" : ""}`}
+        className={`arrow-body ${isSelected ? "is-selected" : ""} ${
+          hasStartHead ? "has-start-head" : ""
+        } ${hasEndHead ? "has-end-head" : ""}`}
         data-board-item="arrow"
         onPointerDown={onMove}
         style={
           {
             "--arrow-color": arrow.color,
-            left: arrow.x1,
-            top: arrow.y1 - 13,
+            left: roundGeometry(arrow.x1),
+            top: roundGeometry(arrow.y1 - 13),
             width: length,
             transform: `rotate(${angle}deg)`,
           } as CSSProperties
@@ -838,7 +1081,10 @@ function ArrowElement({
         type="button"
       >
         <span className="arrow-line" />
-        <span className="arrow-head" />
+        {hasStartHead ? (
+          <span className="arrow-head arrow-head-start" />
+        ) : null}
+        {hasEndHead ? <span className="arrow-head arrow-head-end" /> : null}
       </button>
       {!isDraft && isSelected ? (
         <>
