@@ -46,8 +46,6 @@ type SelectedItem =
   | { type: "arrow"; id: string }
   | null;
 
-type Tool = "select" | "arrow";
-
 type Point = {
   x: number;
   y: number;
@@ -80,17 +78,11 @@ type DragState =
       startWorld: Point;
     }
   | {
-      type: "move-arrow";
-      pointerId: number;
-      id: string;
-      startWorld: Point;
-      startArrow: ArrowItem;
-    }
-  | {
       type: "resize-arrow";
       pointerId: number;
       id: string;
       handle: "start" | "end";
+      startArrow: ArrowItem;
     };
 
 type StoredBoard = {
@@ -105,6 +97,17 @@ const MAX_ZOOM = 2.2;
 const MIN_NOTE_WIDTH = 170;
 const MIN_NOTE_HEIGHT = 130;
 const CONNECT_SNAP_PX = 28;
+const DEFAULT_ARROW_IDS = new Set(["arrow-1", "arrow-2"]);
+const NOTE_SPAWN_OFFSETS: Point[] = [
+  { x: 0, y: 0 },
+  { x: 34, y: 34 },
+  { x: 68, y: 68 },
+  { x: -34, y: 34 },
+  { x: 34, y: -34 },
+  { x: -34, y: -34 },
+  { x: 68, y: 0 },
+  { x: 0, y: 68 },
+];
 
 const arrowDirections: Array<{
   id: ArrowDirection;
@@ -157,30 +160,7 @@ const initialNotes: Note[] = [
   },
 ];
 
-const initialArrows: ArrowItem[] = [
-  {
-    id: "arrow-1",
-    x1: 100,
-    y1: -28,
-    x2: 210,
-    y2: 46,
-    color: "#3f4a5a",
-    direction: "forward",
-    startAnchor: { noteId: "note-1", side: "right" },
-    endAnchor: { noteId: "note-2", side: "left" },
-  },
-  {
-    id: "arrow-2",
-    x1: 334,
-    y1: 128,
-    x2: 177,
-    y2: 226,
-    color: "#3f4a5a",
-    direction: "both",
-    startAnchor: { noteId: "note-2", side: "bottom" },
-    endAnchor: { noteId: "note-3", side: "top" },
-  },
-];
+const initialArrows: ArrowItem[] = [];
 
 const initialView: ViewState = { x: 520, y: 310, zoom: 1 };
 
@@ -259,6 +239,24 @@ function normalizeArrow(value: ArrowItem): ArrowItem {
   };
 }
 
+function findOpenNotePosition(notes: Note[], base: Point): Point {
+  const available = NOTE_SPAWN_OFFSETS.find((offset) => {
+    const x = base.x + offset.x;
+    const y = base.y + offset.y;
+
+    return !notes.some(
+      (note) => Math.abs(note.x - x) < 20 && Math.abs(note.y - y) < 20,
+    );
+  });
+
+  if (available) {
+    return { x: base.x + available.x, y: base.y + available.y };
+  }
+
+  const cascade = 34 * ((notes.length % 8) + 1);
+  return { x: base.x + cascade, y: base.y + cascade };
+}
+
 function isBoardData(value: unknown): value is StoredBoard {
   if (!value || typeof value !== "object") {
     return false;
@@ -281,7 +279,6 @@ export default function Home() {
   const [notes, setNotes] = useState<Note[]>(initialNotes);
   const [arrows, setArrows] = useState<ArrowItem[]>(initialArrows);
   const [view, setView] = useState<ViewState>(initialView);
-  const [tool, setTool] = useState<Tool>("select");
   const [selected, setSelected] = useState<SelectedItem>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [draftArrow, setDraftArrow] = useState<ArrowItem | null>(null);
@@ -305,14 +302,15 @@ export default function Home() {
 
   const screenToWorld = useCallback(
     (clientX: number, clientY: number): Point => {
-      const rect = boardRef.current?.getBoundingClientRect();
-      if (!rect) {
+      const board = boardRef.current;
+      if (!board) {
         return { x: 0, y: 0 };
       }
+      const rect = board.getBoundingClientRect();
 
       return {
-        x: (clientX - rect.left - view.x) / view.zoom,
-        y: (clientY - rect.top - view.y) / view.zoom,
+        x: (clientX - rect.left + board.scrollLeft - view.x) / view.zoom,
+        y: (clientY - rect.top + board.scrollTop - view.y) / view.zoom,
       };
     },
     [view],
@@ -368,7 +366,16 @@ export default function Home() {
         const parsed: unknown = JSON.parse(stored);
         if (isBoardData(parsed)) {
           setNotes(parsed.notes);
-          setArrows(parsed.arrows.map(normalizeArrow));
+          setArrows(
+            parsed.arrows
+              .map(normalizeArrow)
+              .filter(
+                (arrow) =>
+                  arrow.startAnchor &&
+                  arrow.endAnchor &&
+                  !DEFAULT_ARROW_IDS.has(arrow.id),
+              ),
+          );
           setView(parsed.view ?? initialView);
         }
       }
@@ -402,7 +409,6 @@ export default function Home() {
       if (event.key === "Escape") {
         setDraftArrow(null);
         setDrag(null);
-        setTool("select");
       }
     };
 
@@ -429,10 +435,14 @@ export default function Home() {
 
   const addNote = useCallback(() => {
     const center = getViewportCenter();
-    const nextNote: Note = {
-      id: createId("note"),
+    const position = findOpenNotePosition(notes, {
       x: Math.round(center.x - 130),
       y: Math.round(center.y - 92),
+    });
+    const nextNote: Note = {
+      id: createId("note"),
+      x: position.x,
+      y: position.y,
       width: 260,
       height: 184,
       text: "",
@@ -441,8 +451,7 @@ export default function Home() {
 
     setNotes((current) => [...current, nextNote]);
     setSelected({ type: "note", id: nextNote.id });
-    setTool("select");
-  }, [getViewportCenter]);
+  }, [getViewportCenter, notes]);
 
   const duplicateNote = useCallback(() => {
     if (!selectedNote) {
@@ -539,29 +548,8 @@ export default function Home() {
       return;
     }
 
-    const world = screenToWorld(event.clientX, event.clientY);
     event.currentTarget.setPointerCapture(event.pointerId);
     setSelected(null);
-
-    if (tool === "arrow") {
-      setDraftArrow({
-        id: "draft",
-        x1: world.x,
-        y1: world.y,
-        x2: world.x,
-        y2: world.y,
-        color: "#3f4a5a",
-        direction: "forward",
-        startAnchor: null,
-        endAnchor: null,
-      });
-      setDrag({
-        type: "draw-arrow",
-        pointerId: event.pointerId,
-        startWorld: world,
-      });
-      return;
-    }
 
     setDrag({
       type: "pan",
@@ -626,27 +614,6 @@ export default function Home() {
       return;
     }
 
-    if (drag.type === "move-arrow") {
-      const dx = world.x - drag.startWorld.x;
-      const dy = world.y - drag.startWorld.y;
-      setArrows((current) =>
-        current.map((arrow) =>
-          arrow.id === drag.id
-            ? {
-                ...arrow,
-                x1: drag.startArrow.x1 + dx,
-                y1: drag.startArrow.y1 + dy,
-                x2: drag.startArrow.x2 + dx,
-                y2: drag.startArrow.y2 + dy,
-                startAnchor: null,
-                endAnchor: null,
-              }
-            : arrow,
-        ),
-      );
-      return;
-    }
-
     if (drag.type === "resize-arrow") {
       const snapped = findNearestAnchor(world);
       setArrows((current) =>
@@ -682,8 +649,12 @@ export default function Home() {
         draftArrow.x2 - draftArrow.x1,
         draftArrow.y2 - draftArrow.y1,
       );
+      const connectsDifferentNotes =
+        draftArrow.startAnchor &&
+        draftArrow.endAnchor &&
+        draftArrow.startAnchor.noteId !== draftArrow.endAnchor.noteId;
 
-      if (length > 28) {
+      if (length > 28 && connectsDifferentNotes) {
         const nextArrow = {
           ...draftArrow,
           id: createId("arrow"),
@@ -691,6 +662,27 @@ export default function Home() {
         setArrows((current) => [...current, nextArrow]);
         setSelected({ type: "arrow", id: nextArrow.id });
       }
+    }
+
+    if (drag.type === "resize-arrow") {
+      setArrows((current) =>
+        current.map((arrow) => {
+          if (arrow.id !== drag.id) {
+            return arrow;
+          }
+
+          const anchor =
+            drag.handle === "start" ? arrow.startAnchor : arrow.endAnchor;
+          const otherAnchor =
+            drag.handle === "start" ? arrow.endAnchor : arrow.startAnchor;
+
+          return anchor &&
+            otherAnchor &&
+            anchor.noteId !== otherAnchor.noteId
+            ? arrow
+            : drag.startArrow;
+        }),
+      );
     }
 
     setDraftArrow(null);
@@ -703,10 +695,11 @@ export default function Home() {
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const rect = boardRef.current?.getBoundingClientRect();
-    if (!rect) {
+    const board = boardRef.current;
+    if (!board) {
       return;
     }
+    const rect = board.getBoundingClientRect();
 
     const worldBefore = screenToWorld(event.clientX, event.clientY);
     const nextZoom = clamp(
@@ -717,8 +710,16 @@ export default function Home() {
 
     setView({
       zoom: nextZoom,
-      x: event.clientX - rect.left - worldBefore.x * nextZoom,
-      y: event.clientY - rect.top - worldBefore.y * nextZoom,
+      x:
+        event.clientX -
+        rect.left +
+        board.scrollLeft -
+        worldBefore.x * nextZoom,
+      y:
+        event.clientY -
+        rect.top +
+        board.scrollTop -
+        worldBefore.y * nextZoom,
     });
   };
 
@@ -730,7 +731,8 @@ export default function Home() {
 
       const world = screenToWorld(event.clientX, event.clientY);
       boardRef.current?.setPointerCapture(event.pointerId);
-      setTool("select");
+      event.preventDefault();
+      window.getSelection()?.removeAllRanges();
       setSelected({ type: "note", id: note.id });
       setDrag({
         type: "move-note",
@@ -770,7 +772,7 @@ export default function Home() {
 
       const point = getNoteAnchorPoint(note, side);
       boardRef.current?.setPointerCapture(event.pointerId);
-      setTool("arrow");
+      event.preventDefault();
       setSelected(null);
       setDraftArrow({
         id: "draft",
@@ -791,23 +793,14 @@ export default function Home() {
       event.stopPropagation();
     };
 
-  const beginArrowMove =
+  const selectArrow =
     (arrow: ArrowItem) => (event: ReactPointerEvent<HTMLButtonElement>) => {
       if (event.button !== 0) {
         return;
       }
 
-      const world = screenToWorld(event.clientX, event.clientY);
-      boardRef.current?.setPointerCapture(event.pointerId);
-      setTool("select");
+      event.preventDefault();
       setSelected({ type: "arrow", id: arrow.id });
-      setDrag({
-        type: "move-arrow",
-        pointerId: event.pointerId,
-        id: arrow.id,
-        startWorld: world,
-        startArrow: arrow,
-      });
       event.stopPropagation();
     };
 
@@ -819,13 +812,13 @@ export default function Home() {
       }
 
       boardRef.current?.setPointerCapture(event.pointerId);
-      setTool("select");
       setSelected({ type: "arrow", id: arrow.id });
       setDrag({
         type: "resize-arrow",
         pointerId: event.pointerId,
         id: arrow.id,
         handle,
+        startArrow: arrow,
       });
       event.stopPropagation();
     };
@@ -861,22 +854,6 @@ export default function Home() {
           <button className="tool-button primary" type="button" onClick={addNote}>
             <span aria-hidden="true">+</span>
             <span>Note</span>
-          </button>
-          <button
-            className={`tool-button ${tool === "select" ? "is-active" : ""}`}
-            type="button"
-            onClick={() => setTool("select")}
-          >
-            <span aria-hidden="true">↕</span>
-            <span>Move</span>
-          </button>
-          <button
-            className={`tool-button ${tool === "arrow" ? "is-active" : ""}`}
-            type="button"
-            onClick={() => setTool("arrow")}
-          >
-            <span aria-hidden="true">→</span>
-            <span>Arrow</span>
           </button>
           <button
             className="tool-button"
@@ -930,7 +907,7 @@ export default function Home() {
 
       <section
         ref={boardRef}
-        className={`board-surface ${tool === "arrow" ? "is-arrow-tool" : ""} ${
+        className={`board-surface ${drag ? "is-dragging" : ""} ${
           drag?.type === "pan" ? "is-panning" : ""
         }`}
         style={boardStyle}
@@ -948,7 +925,7 @@ export default function Home() {
               isDraft={arrow.id === "draft"}
               isSelected={selected?.type === "arrow" && selected.id === arrow.id}
               key={arrow.id}
-              onMove={beginArrowMove(arrow)}
+              onSelect={selectArrow(arrow)}
               onResizeEnd={beginArrowResize(arrow, "end")}
               onResizeStart={beginArrowResize(arrow, "start")}
             />
@@ -961,7 +938,7 @@ export default function Home() {
                   ? "is-selected"
                   : ""
               } ${
-                tool === "arrow" ||
+                draftArrow ||
                 (selected?.type === "note" && selected.id === note.id)
                   ? "show-connectors"
                   : ""
@@ -1002,24 +979,29 @@ export default function Home() {
                   updateNote(note.id, { text: event.currentTarget.value })
                 }
                 onFocus={() => setSelected({ type: "note", id: note.id })}
+                onDragStart={(event) => event.preventDefault()}
                 onPointerDown={(event) => event.stopPropagation()}
                 placeholder="메모"
                 spellCheck={false}
               />
               <div className="note-footer">
-                <div className="color-row" aria-label="Note color">
-                  {noteColors.map((color) => (
-                    <button
-                      aria-label={color.label}
-                      className={`color-dot dot-${color.id} ${
-                        note.color === color.id ? "is-active" : ""
-                      }`}
-                      key={color.id}
-                      onClick={() => updateNote(note.id, { color: color.id })}
-                      type="button"
-                    />
-                  ))}
-                </div>
+                {selected?.type === "note" && selected.id === note.id ? (
+                  <div className="color-row" aria-label="Note color">
+                    {noteColors.map((color) => (
+                      <button
+                        aria-label={color.label}
+                        className={`color-dot dot-${color.id} ${
+                          note.color === color.id ? "is-active" : ""
+                        }`}
+                        key={color.id}
+                        onClick={() => updateNote(note.id, { color: color.id })}
+                        type="button"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <span />
+                )}
                 <button
                   aria-label="Resize note"
                   className="resize-handle"
@@ -1039,14 +1021,14 @@ function ArrowElement({
   arrow,
   isDraft,
   isSelected,
-  onMove,
+  onSelect,
   onResizeEnd,
   onResizeStart,
 }: {
   arrow: ArrowItem;
   isDraft: boolean;
   isSelected: boolean;
-  onMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onSelect: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onResizeEnd: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onResizeStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
@@ -1068,7 +1050,7 @@ function ArrowElement({
           hasStartHead ? "has-start-head" : ""
         } ${hasEndHead ? "has-end-head" : ""}`}
         data-board-item="arrow"
-        onPointerDown={onMove}
+        onPointerDown={onSelect}
         style={
           {
             "--arrow-color": arrow.color,

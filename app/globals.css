@@ -239,7 +239,7 @@ button {
   --grid-color-minor: rgb(92 103 118 / 0.08);
 
   position: relative;
-  overflow: hidden;
+  overflow: clip;
   background-color: #f6f4ef;
   background-image:
     linear-gradient(var(--grid-color-major) 1px, transparent 1px),
@@ -258,14 +258,16 @@ button {
     var(--grid-size) var(--grid-size);
   cursor: grab;
   touch-action: none;
-}
-
-.board-surface.is-arrow-tool {
-  cursor: crosshair;
+  user-select: none;
 }
 
 .board-surface.is-panning {
   cursor: grabbing;
+}
+
+.board-surface.is-dragging,
+.board-surface.is-dragging * {
+  user-select: none;
 }
 
 .board-world {
@@ -379,6 +381,7 @@ button {
   border-bottom: 1px solid rgb(31 41 55 / 0.08);
   background: rgb(255 255 255 / 0.18);
   cursor: move;
+  user-select: none;
 }
 
 .note-grip span {
@@ -403,6 +406,7 @@ button {
   font-weight: 620;
   line-height: 1.42;
   white-space: pre-wrap;
+  user-select: text;
 }
 
 .sticky-note textarea::placeholder {
@@ -479,7 +483,7 @@ button {
   border: 0;
   border-radius: 0;
   background: transparent;
-  cursor: move;
+  cursor: pointer;
   pointer-events: auto;
   transform-origin: 0 50%;
 }
@@ -541,6 +545,7 @@ button {
 
 .arrow-point {
   position: absolute;
+  z-index: 4;
   width: 18px;
   height: 18px;
   border: 2px solid #2f80ed;
