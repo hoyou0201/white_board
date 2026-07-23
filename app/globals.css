@@ -106,6 +106,7 @@ button {
 .tool-strip,
 .view-strip {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 8px;
 }
@@ -145,6 +146,7 @@ button {
 }
 
 .tool-strip {
+  flex-wrap: wrap;
   justify-content: center;
 }
 
@@ -570,23 +572,32 @@ button {
 
 @media (max-width: 860px) {
   .board-toolbar {
-    grid-template-columns: 1fr;
-    align-items: stretch;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px 10px;
   }
 
   .brand-block {
-    justify-content: space-between;
+    grid-column: 1;
+    grid-row: 1;
   }
 
-  .tool-strip,
-  .view-strip {
+  .tool-strip {
+    grid-column: 1 / -1;
+    grid-row: 2;
     justify-content: flex-start;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    overflow: visible;
+  }
+
+  .view-strip {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    overflow: visible;
   }
 
   .direction-control {
+    order: -1;
     flex: 0 0 auto;
   }
 
