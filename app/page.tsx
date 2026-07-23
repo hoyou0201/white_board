@@ -94,6 +94,8 @@ type StoredBoard = {
 const STORAGE_KEY = "codex.memo-whiteboard.v1";
 const MIN_ZOOM = 0.24;
 const MAX_ZOOM = 2.2;
+const GRID_BASE_SIZE = 32;
+const GRID_MAX_SCREEN_SIZE = 48;
 const MIN_NOTE_WIDTH = 170;
 const MIN_NOTE_HEIGHT = 130;
 const CONNECT_SNAP_PX = 28;
@@ -167,6 +169,15 @@ const initialView: ViewState = { x: 520, y: 310, zoom: 1 };
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getAdaptiveGridSize(zoom: number) {
+  const scaledSize = GRID_BASE_SIZE * zoom;
+  const level = Math.floor(
+    Math.log2(GRID_MAX_SCREEN_SIZE / scaledSize),
+  );
+
+  return scaledSize * 2 ** level;
 }
 
 function createId(prefix: string) {
@@ -939,11 +950,12 @@ export default function Home() {
       event.stopPropagation();
     };
 
+  const gridSize = getAdaptiveGridSize(view.zoom);
   const boardStyle = {
     "--board-x": `${view.x}px`,
     "--board-y": `${view.y}px`,
     "--board-zoom": view.zoom,
-    "--grid-size": "32px",
+    "--grid-size": `${gridSize}px`,
     "--grid-x": `${view.x}px`,
     "--grid-y": `${view.y}px`,
   } as CSSProperties;
